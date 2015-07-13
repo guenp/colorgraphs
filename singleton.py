@@ -18,7 +18,6 @@ class SingletonApp(QApplication):
     '''
     Simple server based on QLocalServer, QLocalSocket, QSharedMemory
     that sends and receives messages and data with a socket connection and shared memory
-    usage: python -m graphite.server
     '''
     timeout = 1000
     running_apps = []

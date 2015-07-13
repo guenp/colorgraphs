@@ -1,2 +1,2 @@
-from .graph import main
+from .colorgraphs import main
 main().exec_()

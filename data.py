@@ -14,7 +14,11 @@ config = get_config()
 _DATA_FOLDER = config.get('Data','DataFolder')
 _ANALYSIS_FOLDER = config.get('Analysis', 'AnalysisFolder')
 sys.path.append(_ANALYSIS_FOLDER)
-_analysis_module = __import__(config.get('Analysis', 'AnalysisModule'))
+try:
+	_analysis_module = __import__(config.get('Analysis', 'AnalysisModule'))
+except:
+	logging.warning("Analysis module error")
+	_analysis_module = None
 
 def analyse(stamp, analysis_module = _analysis_module):
 	'''
@@ -48,17 +52,14 @@ def load():
 	d.meta['name'] = os.path.split(filepath)[1][:-4]
 	return d
 
-def load_multiple():
+def load_multiple(filepaths):
 	'''
 	Open file dialog and load .dat or .csv
 	Return pandas dataframe with bonus attributes .filepath, .stamp and .meta (from meta/json file)
 	'''
-	if not QtGui.QApplication.instance():
-		QtGui.QApplication(sys.argv)
-	fileDialog = QtGui.QFileDialog()
-	filepaths = fileDialog.getOpenFileNames(directory = _DATA_FOLDER)
 	dlist = []
 	for filepath in filepaths:
+		filepath = str(filepath)
 		extension = filepath[-4:]
 		if '.dat' in filepath:
 			d = pd.read_csv(filepath,sep='\t')
