@@ -1,2 +1,2 @@
-from .graphwindow import main
+from .dockwin import main
 main().exec_()

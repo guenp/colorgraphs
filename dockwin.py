@@ -33,7 +33,7 @@ _BASE_PATH = os.path.split(os.path.realpath(__file__))[0]
 _IMG_PATH = os.path.join(_BASE_PATH,'images')
 
 # Create a class for our main window
-class Main(QtGui.QMainWindow):
+class DockWin(QtGui.QMainWindow):
     docklist = []
     def __init__(self):
         logging.debug('Creating main window.')
@@ -75,7 +75,7 @@ class Main(QtGui.QMainWindow):
             self.docklist.remove(dock)
         dock = Dock(name)
         self.dockarea.addDock(dock,_DOCK_POSITION)
-        Main.docklist.append(dock)
+        DockWin.docklist.append(dock)
         return dock
 
     def create_1dplot(self, x, y, name='', xlabel=('',), ylabel=('',)):
@@ -95,47 +95,47 @@ class Main(QtGui.QMainWindow):
         dock = self.create_dock(name)
         w = Plot2DWidget(x,y,z,title=name,xlabel=xlabel,ylabel=ylabel)
         dock.addWidget(w)
+        
+# def plot1d(x, y, name='', xlabel=('',), ylabel=('',)):
+#     '''
+#     Lineplot
+#     x,y (np.array)
+#     '''
+#     app = get_instance()
+#     if not hasattr(app,'is_running'):
+#         app.mw.create_1dplot(x, y, title=name, xlabel=xlabel, ylabel=ylabel)
+#     else:
+#         data = (x,y)
+#         message = {'name': name, 'labels': (xlabel, ylabel)}
+#         app.send_data(data, message)
 
-def plot1d(x, y, name='', xlabel=('',), ylabel=('',)):
-    '''
-    Lineplot
-    x,y (np.array)
-    '''
-    app = get_instance()
-    if not hasattr(app,'is_running'):
-        app.mw.create_1dplot(x, y, title=name, xlabel=xlabel, ylabel=ylabel)
-    else:
-        data = (x,y)
-        message = {'name': name, 'labels': (xlabel, ylabel)}
-        app.send_data(data, message)
+# def plot2d(x, y, z, name='', xlabel=('',), ylabel=('',), zlabel=('',)):
+#     '''
+#     Plot 2d colorplot
+#     x,y,z (np.array): equally spaced grid data
+#     '''
+#     app = get_instance()
+#     if not hasattr(app,'is_running'):
+#         app.mw.create_2dplot(x, y, z, name=name, xlabel=xlabel, ylabel=ylabel, zlabel=zlabel)
+#     else:
+#         data = (x,y,z)
+#         message = {'name': name, 'labels': (xlabel, ylabel, zlabel)}
+#         app.send_data(data, message)
 
-def plot2d(x, y, z, name='', xlabel=('',), ylabel=('',), zlabel=('',)):
-    '''
-    Plot 2d colorplot
-    x,y,z (np.array): equally spaced grid data
-    '''
-    app = get_instance()
-    if not hasattr(app,'is_running'):
-        app.mw.create_2dplot(x, y, z, name=name, xlabel=xlabel, ylabel=ylabel, zlabel=zlabel)
-    else:
-        data = (x,y,z)
-        message = {'name': name, 'labels': (xlabel, ylabel, zlabel)}
-        app.send_data(data, message)
-
-def plot(d):
-    '''
-    Plot contents of analysed dataframe
-    '''
-    name = d.meta['name']
-    xlabel = d.x.label
-    ylabel = d.y.label
-    x,y = d.x.reshape(d.meta['shape']),d.y.reshape(d.meta['shape'])
-    if len(d.keys())==3:
-        zlabel = d.z.label
-        z = d.z.reshape(d.meta['shape'])
-        plot2d(x,y,z,name,xlabel,ylabel,zlabel)
-    elif len(d.keys())==2:
-        plot1d(x,y,name,xlabel,ylabel)
+# def plot(d):
+#     '''
+#     Plot contents of analysed dataframe
+#     '''
+#     name = d.meta['name']
+#     xlabel = d.x.label
+#     ylabel = d.y.label
+#     x,y = d.x.reshape(d.meta['shape']),d.y.reshape(d.meta['shape'])
+#     if len(d.keys())==3:
+#         zlabel = d.z.label
+#         z = d.z.reshape(d.meta['shape'])
+#         plot2d(x,y,z,name,xlabel,ylabel,zlabel)
+#     elif len(d.keys())==2:
+#         plot1d(x,y,name,xlabel,ylabel)
 
 def get_filepaths():
     fileDialog = QtGui.QFileDialog()
@@ -223,7 +223,7 @@ def show():
 def main():
     if not QApplication.instance():
         app = QApplication(sys.argv)
-        app.mw = Main()
+        app.mw = DockWin()
         app.mw.show()
 
     # d = get('20150713_022632')

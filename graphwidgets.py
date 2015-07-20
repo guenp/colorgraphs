@@ -3,21 +3,18 @@ import pandas as pd
 import numpy as np
 import sys,time,os
 from .gutil import get_image_path
+from pyqtgraph.exporters import ImageExporter, SVGExporter
+from PyQt4 import QtGui, QtCore
+from PyQt4.Qt import QImage, QPainter, QBuffer, QIODevice, QByteArray, SIGNAL
+from IPython.core.display import SVG
+from IPython.html import widgets
+from IPython.display import display, clear_output
+import pyqtgraph.functions as fn
+from pyqtgraph.Point import *
 
-_labels = {
-    'Bpar': ('Bpar','T'),
-    'Bpary': ('Bpary','T'),
-    'Bperp': ('Bperp','T'),
-    'X_current': ('Iac','A'),
-    'X_voltage2': ('Vac','V'),
-    'backgate': ('Vbg','V'),
-    'current': ('Idc','A'),
-    'dc_source_voltage': ('Vsd_a','V'),
-    'temperature': ('T','K'),
-    'timer': ('t','s'),
-    'topgate': ('Vtg','V'),
-    'voltage2': ('Vsd','V')
-}
+import signal
+import logging
+logging.root.setLevel(logging.DEBUG)
 
 _mango = {'mode': 'rgb',
  'ticks': [(0.0, (0, 0, 0, 255)),
@@ -30,7 +27,10 @@ _mango = {'mode': 'rgb',
 _predefColormaps = pg.graphicsItems.GradientEditorItem.Gradients
 _predefColormaps['mango'] = _mango
 
+_window_size = (400,300)
+
 _mango_clrmp = pg.ColorMap([ticks[0] for ticks in _mango['ticks']],[ticks[1] for ticks in _mango['ticks']])
+
 from .gutil import get_config
 config = get_config()
 pg.setConfigOption('background', config.get('Style','BackgroundColor'))
@@ -44,19 +44,47 @@ def get_instance():
 
 class BasePlotWidget():
     widgetlist = []
-    def __init__(self, xlabel=('x',), ylabel=('y',)):
+    def __init__(self, title, xlabel=('x',), ylabel=('y',), window_size=_window_size):
         self.label = None
         self.parametric = False
         self.snap_to_datapoints = False
         self.crosshair = False
         self.labels = (xlabel, ylabel) if len(xlabel)>1 else ((xlabel[0],''), (ylabel[0],''))
 
+        style = QtGui.QStyleFactory().create("windows")
+        close_icon = style.standardIcon(QtGui.QStyle.SP_TitleBarCloseButton)
+        self.close_button = QtGui.QPushButton(close_icon, "", self)
+        self.close_button.clicked.connect(self.closeAction)
+        self.close_button.setGeometry(0, 0, 20, 20)
+        self.close_button.raise_()
+
         crosshair_icon = pg.QtGui.QIcon(os.path.join(get_image_path(),'crosshair.png'))
-        crosshair_button = pg.QtGui.QPushButton(crosshair_icon, '', self)
-        crosshair_button.clicked.connect(self.toggle_crosshair)
-        crosshair_button.setGeometry(0, 0, 20, 20)
-        crosshair_button.raise_()
+        self.crosshair_button = pg.QtGui.QPushButton(crosshair_icon, '', self)
+        self.crosshair_button.clicked.connect(self.toggle_crosshair)
+        self.crosshair_button.setGeometry(20, 0, 20, 20)
+        self.crosshair_button.raise_()
+
         self.widgetlist.append(self)
+        self.setWindowTitle(title)
+        self.name = title
+        # self.setWindowFlags(QtCore.Qt.WindowStaysOnTopHint)
+        self.connect(self, SIGNAL('triggered()'), self.closeAction)
+        signal.signal(signal.SIGINT, self.closeAction)
+
+        self.resize(*window_size)
+
+        def func(btn):
+            self.show()
+            self.raise_()
+
+        btn = widgets.Button(description="Open graph")
+        btn.on_click(func)
+        display(btn)
+
+    def closeAction(self,event):
+        clear_output(wait=True)
+        display(self)
+        self.hide()
 
     def toggle_crosshair(self):
         if not self.crosshair:
@@ -73,10 +101,12 @@ class BasePlotWidget():
         self.v_line = pg.InfiniteLine(angle=90, movable=False)
         self.addItem(self.h_line, ignoreBounds=False)
         self.addItem(self.v_line, ignoreBounds=False)
+        item = self.view if type(self)==Plot2DWidget else self.getPlotItem()
         if not self.label:
             self.label = pg.LabelItem(justify="right")
-            item = self.view if type(self)==Plot2DWidget else self.getPlotItem()
-            item.layout.addItem(self.label, 4, 1)
+        else:
+            self.label.show()
+        item.layout.addItem(self.label, 4, 1)
         scene = self.scene() if callable(self.scene) else self.scene
         scene.sigMouseMoved.connect(self.move_crosshair)
         scene = self.scene() if callable(self.scene) else self.scene
@@ -85,6 +115,9 @@ class BasePlotWidget():
     def remove_crosshair(self):
         self.removeItem(self.h_line)
         self.removeItem(self.v_line)
+        self.label.hide()
+        item = self.view if type(self)==Plot2DWidget else self.getPlotItem()
+        item.layout.removeItem(self.label)
         if self.move_crosshair_on:
             scene = self.scene() if callable(self.scene) else self.scene
             scene.sigMouseMoved.disconnect()
@@ -95,28 +128,7 @@ class BasePlotWidget():
         vb = item.getViewBox()
         view_coords = vb.mapSceneToView(mouse_event)
         view_x, view_y = view_coords.x(), view_coords.y()
-
-        if self.snap_to_datapoints:
-            best_guesses = []
-            for data_item in item.items:
-                if isinstance(data_item, pg.PlotDataItem):
-                    xdata, ydata = data_item.xData, data_item.yData
-                    index_distance = lambda i: (xdata[i]-view_x)**2 + (ydata[i] - view_y)**2
-                    if self.parametric:
-                        index = min(range(len(xdata)), key=index_distance)
-                    else:
-                        index = min(np.searchsorted(xdata, view_x), len(xdata)-1)
-                        if index and xdata[index] - view_x > view_x - xdata[index - 1]:
-                            index -= 1
-                    pt_x, pt_y = xdata[index], ydata[index]
-                    best_guesses.append(((pt_x, pt_y), index_distance(index)))
-
-            if not best_guesses:
-                return
-
-            (pt_x, pt_y), _ = min(best_guesses, key=lambda x: x[1])
-        else:
-            (pt_x, pt_y) = (view_x, view_y)
+        (pt_x, pt_y) = (view_x, view_y)
         self.v_line.setPos(pt_x)
         self.h_line.setPos(pt_y)
         self.label.setText("%s=%.2e %s, %s=%.2e %s" % (self.labels[0][0], pt_x, self.labels[0][1], self.labels[1][0],pt_y, self.labels[1][1]))
@@ -132,30 +144,33 @@ class BasePlotWidget():
             self.move_crosshair_on = True
 
 class Plot1DWidget(pg.PlotWidget, BasePlotWidget):
-    def __init__(self,x=[],y=[],title='Graph',xlabel=('x',), ylabel=('y',), d=None):
-        if type(d)==pd.DataFrame:
-            xlabel,ylabel = d.x.label, d.y.label
-            x = d.x.reshape(d.meta['shape'])
-            y = d.y.reshape(d.meta['shape'])
-            title = d.meta['name']
-
+    def __init__(self,x=[],y=[],title='Graph',xlabel=('x',), ylabel=('y',), window_size=_window_size):
         pg.PlotWidget.__init__(self,title=title)
-        BasePlotWidget.__init__(self, xlabel, ylabel)
+        BasePlotWidget.__init__(self, title, xlabel, ylabel, window_size)
         self.plot(x,y)
         self.setLabels(bottom=xlabel, left=ylabel)
 
+    def _repr_png_(self):
+        self.show()
+        self.hide()
+
+        mainExp = ImageExporter(self.plotItem)
+        self.image = mainExp.export(toBytes=True)
+
+        byte_array = QByteArray()
+        buffer = QBuffer(byte_array)
+        buffer.open(QIODevice.ReadWrite)
+        self.image.save(buffer, 'PNG')
+        buffer.close()
+
+        return bytes(byte_array)
+
 class Plot2DWidget(pg.ImageView, BasePlotWidget):
-    def __init__(self,x=[],y=[],z=[],title='Graph',xlabel=('x',), ylabel=('y',), d=None):
-        if type(d)==pd.DataFrame:
-            xlabel,ylabel,zlabel = d.x.label, d.y.label, d.z.label
-            x = d.x.reshape(d.meta['shape'])
-            y = d.y.reshape(d.meta['shape'])
-            z = d.z.reshape(d.meta['shape'])
-            title = d.meta['name']
+    def __init__(self,x=[],y=[],z=[],title='Graph',xlabel=('x',), ylabel=('y',), window_size=_window_size):
 
         plt = (pg.PlotItem(title=title, labels={'bottom': xlabel,'left': ylabel}))
         pg.ImageView.__init__(self,view=plt)
-        BasePlotWidget.__init__(self, xlabel, ylabel)
+        BasePlotWidget.__init__(self, title, xlabel, ylabel, window_size)
 
         xvals = x.unique() if type(x)==pd.Series else pd.Series(x.flatten()).unique()
         yvals = y[0]
@@ -167,15 +182,111 @@ class Plot2DWidget(pg.ImageView, BasePlotWidget):
         self.setImage(z, pos=pos, scale=scale)
         self.view.setAspectLocked(False)
         self.view.invertY(False)
-        self.autoRange()
+        self.view.autoRange(padding=0)
         self.ui.roiBtn.hide() # Hide the ROI button on display
         self.ui.menuBtn.hide() # Hide the Norm button on display
 
-def plot(d):
+        roi_icon = pg.QtGui.QIcon(os.path.join(get_image_path(),'roi.png'))
+        self.roi_button = pg.QtGui.QPushButton(roi_icon, '', self)
+        self.roi_button.clicked.connect(self.toggle_roi)
+        self.roi_button.setGeometry(40, 0, 20, 20)
+        self.roi_button.raise_()
+        self.line_roi = pg.LineSegmentROI([[min(xvals)+(max(xvals)-min(xvals))*.25,min(yvals)+(max(yvals)-min(yvals))*.25], [min(xvals)+(max(xvals)-min(xvals))*.75,min(yvals)+(max(yvals)-min(yvals))*.75]], pen='r')
+        self.line_roi.sigRegionChanged.connect(self.update_roi)
+        self.xdata,self.ydata,self.zdata = x,y,z
+
+        signal.signal(signal.SIGINT, self.closeEvent)
+
+    def update_roi(self):
+        axes=(0,1)
+        # self.line_data = self.line_roi.getArrayRegion(self.zdata, self.imageItem, axes=(0,1))
+        img = self.imageItem
+        imgPts = [self.line_roi.mapToItem(img, h['item'].pos()) for h in self.line_roi.handles]
+        d = Point(imgPts[1] - imgPts[0])
+        o = Point(imgPts[0])
+        z = fn.affineSlice(self.zdata, shape=(int(d.length()),), vectors=[Point(d.norm())], origin=o, axes=axes, order=1)
+        x = fn.affineSlice(self.xdata, shape=(int(d.length()),), vectors=[Point(d.norm())], origin=o, axes=axes, order=1)
+        y = fn.affineSlice(self.ydata, shape=(int(d.length()),), vectors=[Point(d.norm())], origin=o, axes=axes, order=1)
+        self.line_data = (x,y,z)
+
+    def toggle_roi(self):
+        if self.line_roi in self.view.items:
+            self.removeItem(self.line_roi)
+        else:
+            self.addItem(self.line_roi)
+
+    def getQImage(self, resX=None,resY=None):
+        #zoom the the chosen colorrange:
+        r = self.ui.histogram.region.getRegion()
+        self.ui.histogram.vb.setYRange(*r)
+        #create ImageExporters:
+        mainExp = ImageExporter(self.view)
+        colorAxisExp = ImageExporter(self.ui.histogram.axis)
+        colorBarExp = ImageExporter(self.ui.histogram.gradient)
+
+        if resX or resY:
+            #get size-x:
+            mainW = mainExp.getTargetRect().width()
+            colorAxisW = colorAxisExp.getTargetRect().width()
+            colorBarW = colorBarExp.getTargetRect().width()
+
+            #all parts have the same height:
+            mainExp.parameters()['height'] = resY
+            colorAxisExp.parameters()['height'] = resY
+            colorBarExp.parameters()['height'] = resY
+            #size x is proportional:
+            sumWidth = mainW + colorAxisW + colorBarW
+            mainExp.parameters()['width'] = resX * mainW / sumWidth
+            colorAxisExp.parameters()['width'] = resX * colorAxisW / sumWidth
+            colorBarExp.parameters()['width'] = resX * colorBarW / sumWidth
+        #create QImages:
+        main =mainExp.export(toBytes=True)
+        colorAxis =colorAxisExp.export(toBytes=True)
+        colorBar = colorBarExp.export(toBytes=True)
+        #define the size:
+        x = main.width() + colorAxis.width() + colorBar.width()
+        y = main.height()
+        #to get everything in the same height:
+        yOffs = [0,0.5*(y-colorAxis.height()),0.5*(y-colorBar.height())]
+        result = QtGui.QImage(x, y ,QtGui.QImage.Format_RGB32)
+
+        #the colorbar is a bit smaller that the rest. to exclude black lines paint all white:
+
+        result.fill(QtCore.Qt.white)
+        painter = QtGui.QPainter(result)
+        posX = 0
+        for img,y in zip((main,colorAxis,colorBar),yOffs):
+            #draw every part in different positions:
+            painter.drawImage(posX, y, img)
+            posX += img.width()
+        painter.end()
+        return result
+
+    def _repr_png_(self):
+        self.show()
+        self.hide()
+
+        QtGui.QApplication.processEvents()
+        
+        self.image = self.getQImage()
+
+        byte_array = QByteArray()
+        buffer = QBuffer(byte_array)
+        buffer.open(QIODevice.ReadWrite)
+        self.image.save(buffer, 'PNG')
+        buffer.close()        
+
+        return bytes(byte_array)
+
+def plot(x=[], y=[], z=[], title='Graph', xlabel='x', ylabel='y', clabel='', window_size=_window_size):
     '''
     Create plot widget and plot data in dataframe d
     '''
-    s = d.meta['shape']
-    x,y,z = d.x.reshape(s),d.y.reshape(s),d.z.reshape(s)
-    w = Plot2DWidget(x,y,z,d.meta['name'],d.x.label,d.y.label)
-    w.show()
+    if len(z)>0:
+        w = Plot2DWidget(x,y,z,title,xlabel,ylabel,window_size)
+    else:
+        if len(y)>0:
+            w = Plot1DWidget(x,y,title,xlabel,ylabel,window_size)
+        elif len(x)>0:
+            w = Plot1DWidget(np.arange(0,len(x)),x,title,xlabel,ylabel,window_size)
+    return w

@@ -52,11 +52,14 @@ def load():
 	d.meta['name'] = os.path.split(filepath)[1][:-4]
 	return d
 
-def load_multiple(filepaths):
+def load_multiple(filepaths=[]):
 	'''
 	Open file dialog and load .dat or .csv
 	Return pandas dataframe with bonus attributes .filepath, .stamp and .meta (from meta/json file)
 	'''
+	if not filepaths:
+		fileDialog = QtGui.QFileDialog()
+		filepaths = fileDialog.getOpenFileNames(directory = _DATA_FOLDER)
 	dlist = []
 	for filepath in filepaths:
 		filepath = str(filepath)
