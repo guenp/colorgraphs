@@ -1,5 +1,9 @@
 import configparser,glob,os
 
+def get_image_path():
+    _BASE_PATH = os.path.split(os.path.realpath(__file__))[0]
+    return os.path.join(_BASE_PATH,'images')
+
 def get_config():
     config = configparser.ConfigParser()
     if not glob.glob("*.conf"):

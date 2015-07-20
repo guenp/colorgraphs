@@ -98,6 +98,35 @@ def get(stamp):
 		d = stamp
 	return d
 
+def save_data(d, filepath = None, name=None, savetxt=False):
+    '''
+    Save dataset in .dat file (gnuplot format)
+    '''
+    zmatrix = d.z.reshape(d.meta['shape'])
+    zlabel, xlabel, xmin, xmax, ylabel, ymin, ymax = d.z.label, d.x.label, d.x.min(), d.x.max(), d.y.label, d.y.min(), d.y.max()
+    if not name:
+        name = d.meta['name']
+
+    if not filepath:
+        fileDialog = QtGui.QFileDialog()
+        timestamp = datetime.datetime.fromtimestamp(time.time()).strftime('%Y%m%d_%H%M%S')
+        filepath = fileDialog.getSaveFileName(directory = _ANALYSIS_FOLDER + '%s_%s.dat' %(timestamp, name))
+    
+    open(filepath,'w').close()
+    if savetxt:
+    	open(filepath.replace('.dat','.txt'),'w').close()
+
+    with open (filepath,'a') as proc_seqf:
+        for c_row in zmatrix:
+            for c in c_row:
+                proc_seqf.write(("{}\n").format(c))
+            proc_seqf.write("\n\n")
+    if savetxt:
+	    with open (filepath.replace('.dat','.txt'),'a') as proc_seqf:
+	        proc_seqf.write(("{}\n{}\n{}\n{}\n").format(len(zmatrix[0]),xmin,xmax,xlabel))
+	        proc_seqf.write(("{}\n{}\n{}\n{}\n").format(len(zmatrix),ymin,ymax,ylabel))
+	        proc_seqf.write(("1\n{}\n").format(zlabel))
+
 def find_datafiles(stamp):
 	'''
 	Return *.dat or *.csv and *.json file matches (list) for given stamp (str), format date_time, found in _DATA_FOLDER
