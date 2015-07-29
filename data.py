@@ -1,7 +1,7 @@
 # data loading
 __author__ = 'Guen'
 
-import sys,os,glob,fnmatch
+import sys,os,glob,fnmatch,datetime,time
 import configparser, logging
 import numpy as np
 import pandas as pd
@@ -129,6 +129,22 @@ def save_data(d, filepath = None, name=None, savetxt=False):
 	        proc_seqf.write(("{}\n{}\n{}\n{}\n").format(len(zmatrix[0]),xmin,xmax,xlabel))
 	        proc_seqf.write(("{}\n{}\n{}\n{}\n").format(len(zmatrix),ymin,ymax,ylabel))
 	        proc_seqf.write(("1\n{}\n").format(zlabel))
+
+def save_array(zmatrix, filepath = None):
+    '''
+    Save dataset in .dat file (gnuplot format)
+    '''
+    if not filepath:
+        fileDialog = QtGui.QFileDialog()
+        timestamp = datetime.datetime.fromtimestamp(time.time()).strftime('%Y%m%d_%H%M%S')
+        filepath = fileDialog.getSaveFileName(directory = _ANALYSIS_FOLDER + '%s.dat' %timestamp)
+    
+    open(filepath,'w').close()
+    with open (filepath,'a') as proc_seqf:
+        for c_row in zmatrix:
+            for c in c_row:
+                proc_seqf.write(("{}\t").format(c))
+            proc_seqf.write("\n")
 
 def find_datafiles(stamp):
 	'''

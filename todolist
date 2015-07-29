@@ -1,0 +1,14 @@
+todolist
+
+- multiple datatips, crosshair when activated
+- multiple line cuts
+- live update 1D plot of line cut
+- no arrows/histogram on colorplot
+- live plotting
+- update graph button
+- app/executable
+
+- data saving in separate process
+- instrument server
+- experiment server
+- easy data browsing

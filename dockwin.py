@@ -10,13 +10,14 @@ from scipy.interpolate import griddata
 import pandas as pd
 import datetime, time
 import re
+from IPython.display import display
 
 from PyQt4 import QtGui, QtCore
 from PyQt4.QtGui import QApplication
 from PyQt4.QtNetwork import QLocalServer
 from pyqtgraph.dockarea import DockArea, Dock
 
-from .graphwidgets import Plot1DWidget, Plot2DWidget
+from .graphwidgets import plot as plotwidget
 from .gutil import get_config
 from .data import load_multiple, analyse, get, save_data, _ANALYSIS_FOLDER, _DATA_FOLDER
 
@@ -27,7 +28,6 @@ config = get_config()
 logging.root.setLevel(logging.DEBUG)
 pg.setConfigOption('background', config.get('Style','BackgroundColor'))
 pg.setConfigOption('foreground', config.get('Style','ForegroundColor'))
-_DOCK_POSITION = config.get('Graphs','NewGraphPosition')
 _MAIN_WINDOW_SIZE = eval(config.get('Graphs','MainWindowSize')) if type(eval(config.get('Graphs','MainWindowSize')))==tuple else (500,500)
 _BASE_PATH = os.path.split(os.path.realpath(__file__))[0]
 _IMG_PATH = os.path.join(_BASE_PATH,'images')
@@ -38,35 +38,36 @@ class DockWin(QtGui.QMainWindow):
     def __init__(self):
         logging.debug('Creating main window.')
         QtGui.QMainWindow.__init__(self)
-        self.setWindowTitle("Colorgraphs")
+        self.setWindowTitle("colorgraphs dock")
         self.dockarea = DockArea()
         self.setCentralWidget(self.dockarea)
         self.resize(*_MAIN_WINDOW_SIZE)
         self.initUI()
+        self.show()
+        self.raise_()
 
     def initUI(self):
         palette = QtGui.QPalette()
         palette.setColor(QtGui.QPalette.Background,QtCore.Qt.white)
         
         self.setPalette(palette)
+        # loadAction = QtGui.QAction(QtGui.QIcon(os.path.join(_IMG_PATH,'load.png')), '&Load', self)
+        # loadAction.setShortcut('Ctr+O')
+        # loadAction.setStatusTip('Load dataset')
+        # loadAction.triggered.connect(load_action)
 
-        loadAction = QtGui.QAction(QtGui.QIcon(os.path.join(_IMG_PATH,'load.png')), '&Load', self)
-        loadAction.setShortcut('Ctr+O')
-        loadAction.setStatusTip('Load dataset')
-        loadAction.triggered.connect(load_action)
+        # saveAction = QtGui.QAction(QtGui.QIcon(os.path.join(_IMG_PATH,'save.png')), '&Save', self)
+        # saveAction.setShortcut('Ctr+S')
+        # saveAction.setStatusTip('Save dataset')
+        # saveAction.triggered.connect(save_action)
 
-        saveAction = QtGui.QAction(QtGui.QIcon(os.path.join(_IMG_PATH,'save.png')), '&Save', self)
-        saveAction.setShortcut('Ctr+S')
-        saveAction.setStatusTip('Save dataset')
-        saveAction.triggered.connect(save_action)
+        # self.statusBar()
 
-        self.statusBar()
+        # toolbar = self.addToolBar('Load')
+        # toolbar.addAction(loadAction)
+        # toolbar.addAction(saveAction)
 
-        toolbar = self.addToolBar('Load')
-        toolbar.addAction(loadAction)
-        toolbar.addAction(saveAction)
-
-    def create_dock(self, name=''):
+    def create_dock(self, name='', loc='right', widget=None):
         if name == '':
             name = 'Graph%s' %len(self.docklist)
         if name in [dock.name() for dock in self.docklist]:
@@ -74,28 +75,50 @@ class DockWin(QtGui.QMainWindow):
             dock.close()
             self.docklist.remove(dock)
         dock = Dock(name)
-        self.dockarea.addDock(dock,_DOCK_POSITION)
+        if widget:
+            self.dockarea.addDock(dock, loc, widget)
+        else:
+            self.dockarea.addDock(dock, loc)
         DockWin.docklist.append(dock)
         return dock
 
-    def create_1dplot(self, x, y, name='', xlabel=('',), ylabel=('',)):
+    def add_widget(self, w, loc='right'):
         '''
-        Lineplot
-        x,y (np.array)
+        Add widget to the dock.
+        w = widget, loc = location ('right', 'left', 'behind', etc.)
         '''
-        dock = self.create_dock(name)
-        w = Plot1DWidget(x, y, title=name, xlabel=xlabel, ylabel=ylabel)
+        dock = self.create_dock(w.name, loc)
         dock.addWidget(w)
+        w.show()
 
-    def create_2dplot(self, x, y, z, name='', xlabel=('',), ylabel=('',), zlabel=('',)):
+    def add_widgets(self, wlist):
         '''
-        Plot 2d colorplot
-        x,y,z (2D np.array): equally spaced grid data
+        Add a number of widgets to the dock.
+        Spread evenly.
         '''
-        dock = self.create_dock(name)
-        w = Plot2DWidget(x,y,z,title=name,xlabel=xlabel,ylabel=ylabel)
-        dock.addWidget(w)
-        
+        for w in wlist:
+            dock = self.create_dock(w.name, loc)
+        for dock in docklist:
+            dock.addWidget(w)
+
+    def close_all(self):
+        docklist = self.docklist
+        for dock in docklist:
+            dock.close()
+            docklist.remove(dock)
+            del(dock)
+
+    def plot(self, *args, **kwargs):
+        w = plotwidget(*args, **kwargs)
+        self.add_widget(w)
+
+    def _repr_png_(self):
+        for d in self.dockarea.docks.values():
+            display(d.widgets[0])
+
+    def close(self):
+        logging.debug('Close')
+
 # def plot1d(x, y, name='', xlabel=('',), ylabel=('',)):
 #     '''
 #     Lineplot
@@ -225,12 +248,4 @@ def main():
         app = QApplication(sys.argv)
         app.mw = DockWin()
         app.mw.show()
-
-    # d = get('20150713_022632')
-    # d1 = d[d.Bpar<3.5]
-    # d1.meta = d.meta
-    # d2 = analyse(d1)
-    # plot(d2)
-    # if app.is_running:
-    #     app.send_message(sys.argv)
     return app

@@ -2,7 +2,6 @@ import pyqtgraph as pg
 import pandas as pd
 import numpy as np
 import sys,time,os
-from .gutil import get_image_path
 from pyqtgraph.exporters import ImageExporter, SVGExporter
 from PyQt4 import QtGui, QtCore
 from PyQt4.Qt import QImage, QPainter, QBuffer, QIODevice, QByteArray, SIGNAL
@@ -11,38 +10,31 @@ from IPython.html import widgets
 from IPython.display import display, clear_output
 import pyqtgraph.functions as fn
 from pyqtgraph.Point import *
-
 import signal
-import logging
-logging.root.setLevel(logging.DEBUG)
 
-_mango = {'mode': 'rgb',
- 'ticks': [(0.0, (0, 0, 0, 255)),
-  (0.23091904761904761, (8, 136, 255, 255)),
-  (0.42976190476190479, (69, 203, 89, 255)),
-  (0.60945714285714281, (255, 208, 17, 255)),
-  (0.794047619047619, (255, 163, 71, 255)),
-  (1.0, (255, 255, 255, 255))]}
+from .gutil import get_image_path, get_config, _mango_clrmp
 
-_predefColormaps = pg.graphicsItems.GradientEditorItem.Gradients
-_predefColormaps['mango'] = _mango
+__author__ = 'Guen P'
 
-_window_size = (400,300)
-
-_mango_clrmp = pg.ColorMap([ticks[0] for ticks in _mango['ticks']],[ticks[1] for ticks in _mango['ticks']])
-
-from .gutil import get_config
 config = get_config()
+_window_size = eval(config.get('Graphs','WidgetSize'))
 pg.setConfigOption('background', config.get('Style','BackgroundColor'))
 pg.setConfigOption('foreground', config.get('Style','ForegroundColor'))
 
 def get_instance():
+    '''
+    Get QApplication instance, if doesn't exist create one
+    '''
     if not pg.QtGui.QApplication.instance():
         return pg.QtGui.QApplication([])
     else:
         return pg.QtGui.QApplication.instance()
 
 class BasePlotWidget():
+    '''
+    Base widget for Plot1DWidget and Plot2DWidget
+    Creates close and crosshair buttons
+    '''
     widgetlist = []
     def __init__(self, title, xlabel=('x',), ylabel=('y',), window_size=_window_size):
         self.label = None
@@ -74,12 +66,23 @@ class BasePlotWidget():
         self.resize(*window_size)
 
         def func(btn):
-            self.show()
-            self.raise_()
+            if self.in_dock():
+                self.show()
+                self.window().show()
+                self.window().raise_()
+            else:
+                self.show()
+                self.raise_()
 
-        btn = widgets.Button(description="Open graph")
-        btn.on_click(func)
-        display(btn)
+        self.btn = widgets.Button(description="Open graph")
+        self.btn.on_click(func)
+        self.btn.visible = False
+
+    def in_dock(self):
+        try:
+            return self.window()!=self
+        except:
+            return False
 
     def closeAction(self,event):
         clear_output(wait=True)
@@ -144,6 +147,13 @@ class BasePlotWidget():
             self.move_crosshair_on = True
 
 class Plot1DWidget(pg.PlotWidget, BasePlotWidget):
+    '''
+    Widget for 1D plotting
+    x,y: 1D numpy arrays
+    title: str
+    xlabel,ylabel: tuple ('label', 'unit')
+    window_size: tuple (width,height)
+    '''
     def __init__(self,x=[],y=[],title='Graph',xlabel=('x',), ylabel=('y',), window_size=_window_size):
         pg.PlotWidget.__init__(self,title=title)
         BasePlotWidget.__init__(self, title, xlabel, ylabel, window_size)
@@ -153,6 +163,9 @@ class Plot1DWidget(pg.PlotWidget, BasePlotWidget):
     def _repr_png_(self):
         self.show()
         self.hide()
+        if not self.btn.visible:
+            display(self.btn)
+            self.btn.visible = True
 
         mainExp = ImageExporter(self.plotItem)
         self.image = mainExp.export(toBytes=True)
@@ -166,6 +179,13 @@ class Plot1DWidget(pg.PlotWidget, BasePlotWidget):
         return bytes(byte_array)
 
 class Plot2DWidget(pg.ImageView, BasePlotWidget):
+    '''
+    Widget for 1D plotting
+    x,y,z: 2D numpy arrays, square data
+    title: str
+    xlabel,ylabel: tuple ('label', 'unit')
+    window_size: tuple (width,height)
+    '''
     def __init__(self,x=[],y=[],z=[],title='Graph',xlabel=('x',), ylabel=('y',), window_size=_window_size):
 
         plt = (pg.PlotItem(title=title, labels={'bottom': xlabel,'left': ylabel}))
@@ -173,7 +193,7 @@ class Plot2DWidget(pg.ImageView, BasePlotWidget):
         BasePlotWidget.__init__(self, title, xlabel, ylabel, window_size)
 
         xvals = x.unique() if type(x)==pd.Series else pd.Series(x.flatten()).unique()
-        yvals = y[0]
+        yvals = y.unique() if type(y)==pd.Series else pd.Series(y.flatten()).unique()
 
         pos = (xvals[0],yvals[0])
         scale = (np.mean(np.diff(xvals)), np.mean(np.diff(yvals)))
@@ -263,8 +283,16 @@ class Plot2DWidget(pg.ImageView, BasePlotWidget):
         return result
 
     def _repr_png_(self):
-        self.show()
-        self.hide()
+        if not self.in_dock():
+            self.show()
+            self.hide()
+        else:
+            self.window().show()
+            self.window().hide()
+
+        if not self.btn.visible:
+            display(self.btn)
+            self.btn.visible = True
 
         QtGui.QApplication.processEvents()
         
@@ -274,19 +302,28 @@ class Plot2DWidget(pg.ImageView, BasePlotWidget):
         buffer = QBuffer(byte_array)
         buffer.open(QIODevice.ReadWrite)
         self.image.save(buffer, 'PNG')
-        buffer.close()        
-
+        buffer.close()
         return bytes(byte_array)
 
 def plot(x=[], y=[], z=[], title='Graph', xlabel='x', ylabel='y', clabel='', window_size=_window_size):
     '''
-    Create plot widget and plot data in dataframe d
+    Create 1D or 2D plot widget
     '''
-    if len(z)>0:
-        w = Plot2DWidget(x,y,z,title,xlabel,ylabel,window_size)
-    else:
-        if len(y)>0:
-            w = Plot1DWidget(x,y,title,xlabel,ylabel,window_size)
-        elif len(x)>0:
-            w = Plot1DWidget(np.arange(0,len(x)),x,title,xlabel,ylabel,window_size)
-    return w
+    if pg.QtGui.QApplication.instance():
+        if len(z)>0:
+            if type(x)==pd.Series:
+                xlabel = x.name
+                ylabel = y.name
+                title = '%s vs %s' %(xlabel, ylabel)
+                s = (len(y.unique()),len(x.unique()))
+                x = x.reshape(s)
+                y = y.reshape(s)
+                z = z.reshape(s).transpose()
+            else:
+                w = Plot2DWidget(x,y,z,title,xlabel,ylabel,window_size)
+        else:
+            if len(y)>0:
+                w = Plot1DWidget(x,y,title,xlabel,ylabel,window_size)
+            elif len(x)>0:
+                w = Plot1DWidget(np.arange(0,len(x)),x,title,xlabel,ylabel,window_size)
+        return w
