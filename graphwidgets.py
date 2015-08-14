@@ -12,7 +12,9 @@ import pyqtgraph.functions as fn
 from pyqtgraph.Point import *
 import signal
 
-from .gutil import get_image_path, get_config, _mango_clrmp
+from .gutil import get_image_path, get_config, get_mango
+
+_mango_clrmp = get_mango()
 
 __author__ = 'Guen P'
 
@@ -305,7 +307,7 @@ class Plot2DWidget(pg.ImageView, BasePlotWidget):
         buffer.close()
         return bytes(byte_array)
 
-def plot(x=[], y=[], z=[], title='Graph', xlabel='x', ylabel='y', clabel='', window_size=_window_size):
+def plot(x=[], y=[], z=[], title='', xlabel='x', ylabel='y', clabel='', window_size=_window_size):
     '''
     Create 1D or 2D plot widget
     '''
@@ -314,11 +316,14 @@ def plot(x=[], y=[], z=[], title='Graph', xlabel='x', ylabel='y', clabel='', win
             if type(x)==pd.Series:
                 xlabel = x.name
                 ylabel = y.name
-                title = '%s vs %s' %(xlabel, ylabel)
-                s = (len(y.unique()),len(x.unique()))
-                x = x.reshape(s)
-                y = y.reshape(s)
-                z = z.reshape(s).transpose()
+                if title=='':
+                    title = '%s vs %s' %(xlabel, ylabel)
+                s = (len(y.unique())-1,len(x.unique()))
+                lend = s[0]*s[1]
+                x = x[:lend].reshape(s)
+                y = y[:lend].reshape(s)
+                z = z[:lend].reshape(s).transpose()
+                w = Plot2DWidget(x,y,z,title,xlabel,ylabel,window_size)
             else:
                 w = Plot2DWidget(x,y,z,title,xlabel,ylabel,window_size)
         else:
