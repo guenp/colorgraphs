@@ -12,6 +12,8 @@ import imp
 config = get_config()
 
 _DATA_FOLDER = config.get('Data','DataFolder')
+if 'DATA_DIR' in os.environ.keys():
+	_DATA_FOLDER = os.environ['DATA_DIR']
 _ANALYSIS_FOLDER = config.get('Analysis', 'AnalysisFolder')
 sys.path.append(_ANALYSIS_FOLDER)
 try:
@@ -19,6 +21,9 @@ try:
 except:
 	logging.warning("Analysis module error")
 	_analysis_module = None
+
+def get_latest_stamp():
+	return max(glob.iglob('*.dat'), key=os.path.getctime)
 
 def analyse(stamp, analysis_module = _analysis_module):
 	'''
@@ -162,3 +167,10 @@ def find_datafiles(stamp):
 	if len(data_matches)>1:
 		raise Warning('Multiple datafiles found with stamp.')
 	return data_matches[0], json_matches[0]
+
+def get_matrix(d,series,sweeplen):
+    return series[:len(d)-(len(d)%sweeplen)].reshape(np.floor(len(d))/sweeplen,sweeplen)
+
+def get_latest():
+    import os,glob
+    return os.path.split(max(glob.iglob(os.path.join(_DATA_FOLDER,'*.dat')), key=os.path.getctime))[1][:15]
